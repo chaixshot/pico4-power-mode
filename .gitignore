@@ -1,0 +1,10 @@
+# build artifacts
+app/build/
+app/classes.dex
+
+# build toolchain (not part of source)
+tools/
+work/
+
+# logs
+*.log
