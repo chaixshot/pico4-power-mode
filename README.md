@@ -7,12 +7,15 @@
 ## 功能
 
 - 在「设置 → 实验室 → 电源管理方案」下拉框里新增第三个 **高性能** 档位（原厂只显示「续航」「标准」两个）。
-- 选中「高性能」即调用系统官方切换逻辑（`DeviceSwitchUtilsKt.e()`，对应 `powerlevel=2`），效果等同原厂高性能模式：
-  - **eyebuffer 分辨率提升到 2048**（更清晰）
+- 选中「高性能」即调用系统官方切换逻辑（`DeviceSwitchUtilsKt.e()`，对应 `powerlevel=2`）：
+  - **eyebuffer 分辨率强制到 2448×2448**（满画质，更清晰）
   - 关闭 **FFR**（固定注视点渲染，消除边缘模糊）
   - 关闭 **stencil mesh**
   - `target_fps=-1`（不限制帧率）
   - 拉起 **CPU/GPU 高性能调度**（`CpuFreqServer onPowerLevelChange 2`）
+- **双向强制 eyebuffer**（接管标准/续航档）：
+  - 性能模式(2) → **2448×2448**
+  - 标准/续航(0/1) → **1504×1504**（回到出厂默认，省电）
 - 下拉框选项与按钮文字统一显示为「**性能模式**」而非原厂文案「效果优先」。
 
 ## 环境要求
@@ -54,7 +57,7 @@ Hook `com.picovr.settings` 的 `com.picovr.fragments.PicolabFragment`：
 
 1. **`T0(View)`** —— 置标志，表示正在弹出电源模式菜单。
 2. **`PopupMenuHelper.c(...)`** —— 反射往电源菜单的 `List<MenuItemData>` 追加第三个「性能模式」项（文本直接用 `MenuItemData.l(CharSequence)` 设置为「性能模式」）。
-3. **`U0(int)`** —— 拦截 `i==2`（性能模式），调用 `DeviceSwitchUtilsKt.e(context, 2)`（系统官方切换，写 `powerlevel=2` 及各类 persist props），并刷新按钮文字。
+3. **`U0(int)`** —— 接管三个档位（0/1/2）：调 `DeviceSwitchUtilsKt.e(context, i)`（系统官方切换，写 `powerlevel=i` 及各类 persist props），**并额外强制写 eyebuffer**：性能(2)→2448×2448，标准/续航(0/1)→1504×1504。
 4. **`Q(int)`** —— 让按钮/当前方案文字在性能模式下显示「性能模式」。
 
 ### 关键细节 / 坑
@@ -62,7 +65,7 @@ Hook `com.picovr.settings` 的 `com.picovr.fragments.PicolabFragment`：
 - 字符串资源 `picolab_powerFunc3` 运行时被 proguard 混淆，**不能用反射读 R.string 字段**（会 `NoSuchFieldError`），改为直接 `MenuItemData.l("性能模式")` 设文本，或硬编码资源 ID。
 - `xposed_init` 文件**不能带 UTF-8 BOM**（否则类名首字节变乱码 → `ClassNotFoundException`）。
 - `T0` 是带 `View` 参数的私有方法（不是无参）。
-- 固件 `PXRuleValueFile.txt` 里高性能档 `eyebuffer=1504`，但系统切换（`DeviceSwitchUtils.e`）会强制设成 **2048** —— 更清晰，但也更吃 GPU。
+- 运行时真正决定 eyebuffer 的是 **`persist.pvr.config.eyebuffer_width/height`** 系统属性（不是 `PXRuleValueFile.txt`），所以本模块直接在切换时 setSystemProperties 强制写入 2448/1504。
 
 ## 文件结构
 
