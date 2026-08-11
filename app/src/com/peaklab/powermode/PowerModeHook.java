@@ -122,37 +122,40 @@ public class PowerModeHook implements IXposedHookLoadPackage {
             XposedHelpers.findAndHookMethod(frag, "U0", int.class, new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam p) {
                     int i = (int) p.args[0];
-                    if (i == 2) {
+                    if (i == 0 || i == 1 || i == 2) { // 接管三个档位: 双向强制 eyebuffer
                         try {
-                            // 运行时切换: DeviceSwitchUtilsKt.e(context, 2)
+                            // 运行时切换走系统: DeviceSwitchUtilsKt.e(context, i)
                             Object activity = XposedHelpers.callMethod(p.thisObject, "getActivity");
                             Class<?> dsu = XposedHelpers.findClass(
                                 "com.picovr.settings.custom.DeviceSwitchUtilsKt", cl);
                             Method e = dsu.getMethod("e", Context.class, int.class);
-                            e.invoke(null, activity, 2);
-                            // 强制性能档 eyebuffer -> 2448 (覆盖 e() 默认写的 2048)
+                            e.invoke(null, activity, i);
+                            // 强制 eyebuffer: 性能档(2)->2448, 标准/续航(0/1)->1504x1504
                             // 运行时真正读 persist.pvr.config.eyebuffer_width/height, 不是 PXRuleValueFile
+                            String w = (i == 2) ? "2448" : "1504";
+                            String h = (i == 2) ? "2448" : "1504";
                             try {
                                 Class<?> sp = Class.forName("android.os.SystemProperties");
                                 Method spSet = sp.getMethod("set", String.class, String.class);
-                                spSet.invoke(null, "persist.pvr.config.eyebuffer_width", "2448");
-                                spSet.invoke(null, "persist.pvr.config.eyebuffer_height", "2448");
-                            } catch (Throwable t) { XposedBridge.log(TAG + " set 2448 err " + t); }
-                            // 更新字段 this.m = 2 (反射)
+                                spSet.invoke(null, "persist.pvr.config.eyebuffer_width", w);
+                                spSet.invoke(null, "persist.pvr.config.eyebuffer_height", h);
+                                XposedBridge.log(TAG + ": eyebuffer -> " + w + "x" + h + " (powerlevel=" + i + ")");
+                            } catch (Throwable t) { XposedBridge.log(TAG + " set eyebuffer err " + t); }
+                            // 更新字段 this.m = i (反射)
                             try {
                                 Field mf = frag.getDeclaredField("m");
                                 mf.setAccessible(true);
-                                mf.setInt(p.thisObject, 2);
+                                mf.setInt(p.thisObject, i);
                             } catch (Throwable t) { XposedBridge.log(TAG + " set m err " + t); }
-                            // 刷新按钮文字: V(2)
+                            // 刷新按钮文字: V(i)
                             Method v = frag.getDeclaredMethod("V", int.class);
                             v.setAccessible(true);
-                            v.invoke(p.thisObject, 2);
-                            XposedBridge.log(TAG + ": High Performance (powerlevel=2) applied");
+                            v.invoke(p.thisObject, i);
+                            XposedBridge.log(TAG + ": powerlevel=" + i + " applied (eyebuffer forced)");
                         } catch (Throwable t) {
-                            XposedBridge.log(TAG + ": U0(2) err " + t);
+                            XposedBridge.log(TAG + ": U0(" + i + ") err " + t);
                         }
-                        p.setResult(null); // 阻止原 P()[2] 越界
+                        p.setResult(null); // 接管原逻辑, 避免越界
                     }
                 }
             });
