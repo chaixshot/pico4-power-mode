@@ -130,6 +130,14 @@ public class PowerModeHook implements IXposedHookLoadPackage {
                                 "com.picovr.settings.custom.DeviceSwitchUtilsKt", cl);
                             Method e = dsu.getMethod("e", Context.class, int.class);
                             e.invoke(null, activity, 2);
+                            // 强制性能档 eyebuffer -> 2448 (覆盖 e() 默认写的 2048)
+                            // 运行时真正读 persist.pvr.config.eyebuffer_width/height, 不是 PXRuleValueFile
+                            try {
+                                Class<?> sp = Class.forName("android.os.SystemProperties");
+                                Method spSet = sp.getMethod("set", String.class, String.class);
+                                spSet.invoke(null, "persist.pvr.config.eyebuffer_width", "2448");
+                                spSet.invoke(null, "persist.pvr.config.eyebuffer_height", "2448");
+                            } catch (Throwable t) { XposedBridge.log(TAG + " set 2448 err " + t); }
                             // 更新字段 this.m = 2 (反射)
                             try {
                                 Field mf = frag.getDeclaredField("m");
