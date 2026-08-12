@@ -8,11 +8,14 @@ An **LSPosed module** that unlocks the hidden **High Performance** option in **P
 
 - Adds a third **High Performance** option to the `Settings → Lab → Power Management` dropdown (stock only shows Battery Saver / Standard).
 - Selecting High Performance invokes the system's official switch (`DeviceSwitchUtilsKt.e()`, `powerlevel=2`), equivalent to the stock high-perf mode:
-  - **eyebuffer resolution raised to 2048** (sharper)
+  - **eyebuffer resolution forced to 2448×2448** (full quality, sharper)
   - **FFR off** (fixed foveated rendering removed — no edge blur)
   - **stencil mesh off**
   - `target_fps=-1` (uncapped frame rate)
   - **CPU/GPU high-performance scheduling** (`CpuFreqServer onPowerLevelChange 2`)
+- **Bidirectional eyebuffer enforcement** (overrides stock/eco modes too):
+  - High Performance (2) → **2448×2448**
+  - Standard / Battery Saver (0/1) → **1504×1504** (back to stock default, saves power)
 - Dropdown item and button text both show "**性能模式**" (Perf Mode) instead of the stock "效果优先" (Effect-First).
 
 ## Requirements
@@ -54,7 +57,7 @@ Hooks `com.picovr.fragments.PicolabFragment` in `com.picovr.settings`:
 
 1. **`T0(View)`** — sets a flag indicating the power menu is opening.
 2. **`PopupMenuHelper.c(...)`** — reflects into the power menu's `List<MenuItemData>` and appends a third "性能模式" item (text set directly via `MenuItemData.l(CharSequence)`).
-3. **`U0(int)`** — intercepts `i==2`, calls `DeviceSwitchUtilsKt.e(context, 2)` (system switch, writes `powerlevel=2` + persist props), and refreshes the button text.
+3. **`U0(int)`** — intercepts all three levels (0/1/2): calls `DeviceSwitchUtilsKt.e(context, i)` (system switch, writes `powerlevel=i` + persist props), **and extra-forces eyebuffer**: perf(2)→2448×2448, standard/eco(0/1)→1504×1504.
 4. **`Q(int)`** — makes the button/current-mode text show "性能模式".
 
 ### Gotchas
@@ -62,7 +65,7 @@ Hooks `com.picovr.fragments.PicolabFragment` in `com.picovr.settings`:
 - `picolab_powerFunc3` resource string is proguard-obfuscated at runtime; **do not reflect into R.string** (`NoSuchFieldError`). Instead set text via `MenuItemData.l("性能模式")` or hardcode the resource ID.
 - `xposed_init` must **not have a UTF-8 BOM** (otherwise the class name's first byte is corrupted → `ClassNotFoundException`).
 - `T0` is a private method taking a `View` (not parameterless).
-- The firmware's `PXRuleValueFile.txt` uses `eyebuffer=1504` for high perf, but the system switch (`DeviceSwitchUtils.e`) forces **2048** — sharper, but more GPU-bound.
+- The real source of eyebuffer resolution at runtime is the **`persist.pvr.config.eyebuffer_width/height`** system properties (not `PXRuleValueFile.txt`), so this module directly writes `setSystemProperties` for 2448/1504 on switch.
 
 ## Layout
 
