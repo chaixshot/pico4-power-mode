@@ -2,11 +2,11 @@
 apkFileName: multitouch.apk
 isFrameworkApk: false
 packageInfo:
-  forcedPackageId: '127'
+  forcedPackageId: 127
   renameManifestPackage: null
 sdkInfo:
-  minSdkVersion: '29'
-  targetSdkVersion: '29'
+  minSdkVersion: 29
+  targetSdkVersion: 29
 sharedLibrary: false
 sparseResources: false
 unknownFiles: {}
@@ -16,7 +16,7 @@ usesFramework:
   tag: null
 version: 2.9.3
 versionInfo:
-  versionCode: '1'
+  versionCode: 1
   versionName: '1.0'
 doNotCompress:
 - assets/xposed_init
