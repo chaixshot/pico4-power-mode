@@ -13,6 +13,7 @@ import de.robv.android.xposed.XC_MethodHook;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * PicoLabPowerMode
@@ -100,7 +101,7 @@ public class PowerModeHook implements IXposedHookLoadPackage {
                             // item.k(R.string.picolab_powerFunc3) -> 显示"效果优先", 改用 l(CharSequence) 直接设文案
                             // k.invoke(item, resPowerFunc3);
                             Method l = md.getMethod("l", CharSequence.class);
-                            l.invoke(item, "性能模式");
+                            l.invoke(item, getLocalizedString((Context) p.args[0]));
                             data.add(item);
                             // 刷新
                             Method n = adapter.getClass().getMethod("notifyDataSetChanged");
@@ -169,12 +170,56 @@ public class PowerModeHook implements IXposedHookLoadPackage {
                 @Override protected void beforeHookedMethod(MethodHookParam p) {
                     int i = (int) p.args[0];
                     if (i == 2) {
-                        p.setResult("性能模式");
+                        Context ctx = (Context) XposedHelpers.callMethod(p.thisObject, "getActivity");
+                        p.setResult(getLocalizedString(ctx));
                     }
                 }
             });
         } catch (Throwable t) { XposedBridge.log(TAG + ": Q hook err " + t); }
 
         XposedBridge.log(TAG + ": installed");
+    }
+
+    private String getLocalizedString(Context context) {
+        if (context == null) return "性能模式";
+        try {
+            Object res = XposedHelpers.callMethod(context, "getResources");
+            Object config = XposedHelpers.callMethod(res, "getConfiguration");
+            Locale locale = (Locale) XposedHelpers.getObjectField(config, "locale");
+            String lang = locale.getLanguage();
+            String country = locale.getCountry();
+
+            switch (lang) {
+                case "cs": return "Výkonný režim";
+                case "da": return "Ydelsestilstand";
+                case "nl": return "Prestatiemodus";
+                case "fi": return "Suorituskykytila";
+                case "fr": return "Mode performance";
+                case "de": return "Leistungsmodus";
+                case "el": return "Λειτουργία απόδοσης";
+                case "it": return "Modalità prestazioni";
+                case "ja": return "パフォーマンスモード";
+                case "ko": return "성능 모드";
+                case "ms": return "Mod Prestasi";
+                case "nb": case "no": return "Ytelsesmodus";
+                case "pl": return "Tryb wydajności";
+                case "pt": return "Modo de desempenho";
+                case "ro": return "Mod de performanță";
+                case "ru": return "Режим производительности";
+                case "es": return "Modo de rendimiento";
+                case "sv": return "Prestandaläge";
+                case "th": return "โหมดประสิทธิภาพ";
+                case "tr": return "Performans Modu";
+                case "zh":
+                    if ("TW".equals(country) || "HK".equals(country) || "MO".equals(country)) {
+                        return "效能模式";
+                    }
+                    return "性能模式";
+                case "en":
+                default: return "Performance Mode";
+            }
+        } catch (Throwable t) {
+            return "性能模式";
+        }
     }
 }
