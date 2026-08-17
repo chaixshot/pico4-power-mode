@@ -35,6 +35,11 @@ public class PowerModeHook implements IXposedHookLoadPackage {
 
     // 静态标志: 当前是否在弹"电源模式"菜单 (PicolabFragment)
     private static volatile boolean sPowerMenuOpen = false;
+    private static final String COORD_PREFIX = "pico_power_coord_";
+    private static final String COORD_OWNER = COORD_PREFIX + "owner";
+    private static final String COORD_SLEEP_ACTIVE = COORD_PREFIX + "sleep_active";
+    private static final String COORD_POWER_MODE = COORD_PREFIX + "requested_power_mode";
+    private static final String COORD_GENERATION = COORD_PREFIX + "generation";
 
     @Override
     public void handleLoadPackage(final XC_LoadPackage.LoadPackageParam lp) {
@@ -125,23 +130,15 @@ public class PowerModeHook implements IXposedHookLoadPackage {
                     int i = (int) p.args[0];
                     if (i == 0 || i == 1 || i == 2) { // 接管三个档位: 双向强制 eyebuffer
                         try {
-                            // 运行时切换走系统: DeviceSwitchUtilsKt.e(context, i)
                             Object activity = XposedHelpers.callMethod(p.thisObject, "getActivity");
-                            Class<?> dsu = XposedHelpers.findClass(
-                                "com.picovr.settings.custom.DeviceSwitchUtilsKt", cl);
-                            Method e = dsu.getMethod("e", Context.class, int.class);
-                            e.invoke(null, activity, i);
-                            // 强制 eyebuffer: 性能档(2)->2448, 标准/续航(0/1)->1504x1504
-                            // 运行时真正读 persist.pvr.config.eyebuffer_width/height, 不是 PXRuleValueFile
-                            String w = (i == 2) ? "2448" : "1504";
-                            String h = (i == 2) ? "2448" : "1504";
-                            try {
-                                Class<?> sp = Class.forName("android.os.SystemProperties");
-                                Method spSet = sp.getMethod("set", String.class, String.class);
-                                spSet.invoke(null, "persist.pvr.config.eyebuffer_width", w);
-                                spSet.invoke(null, "persist.pvr.config.eyebuffer_height", h);
-                                XposedBridge.log(TAG + ": eyebuffer -> " + w + "x" + h + " (powerlevel=" + i + ")");
-                            } catch (Throwable t) { XposedBridge.log(TAG + " set eyebuffer err " + t); }
+                            Context context = activity instanceof Context ? (Context) activity : null;
+                            if (context == null) throw new IllegalStateException("Settings activity has no Context");
+                            publishRequestedMode(context, i);
+                            if (sleepOwnsDisplay(context)) {
+                                XposedBridge.log(TAG + ": deferred powerlevel=" + i + " while V-Sleep owns display state");
+                            } else {
+                                applyPowerMode(context, i, cl);
+                            }
                             // 更新字段 this.m = i (反射)
                             try {
                                 Field mf = frag.getDeclaredField("m");
@@ -178,6 +175,55 @@ public class PowerModeHook implements IXposedHookLoadPackage {
         } catch (Throwable t) { XposedBridge.log(TAG + ": Q hook err " + t); }
 
         XposedBridge.log(TAG + ": installed");
+    }
+
+    private static void publishRequestedMode(Context context, int mode) throws Exception {
+        Class<?> global = Class.forName("android.provider.Settings$Global");
+        Class<?> resolver = Class.forName("android.content.ContentResolver");
+        Object cr = context.getContentResolver();
+        Method putInt = global.getMethod("putInt", resolver, String.class, int.class);
+        Method getInt = global.getMethod("getInt", resolver, String.class, int.class);
+        if (!((Boolean) putInt.invoke(null, cr, COORD_POWER_MODE, mode)).booleanValue()
+                || ((Integer) getInt.invoke(null, cr, COORD_POWER_MODE, -1)).intValue() != mode) {
+            throw new IllegalStateException("could not persist requested power mode");
+        }
+        int generation = ((Integer) getInt.invoke(null, cr, COORD_GENERATION, 0)).intValue() + 1;
+        if (!((Boolean) putInt.invoke(null, cr, COORD_GENERATION, generation)).booleanValue()) {
+            throw new IllegalStateException("could not advance coordination generation");
+        }
+    }
+
+    private static boolean sleepOwnsDisplay(Context context) {
+        try {
+            Class<?> global = Class.forName("android.provider.Settings$Global");
+            Class<?> resolver = Class.forName("android.content.ContentResolver");
+            Object cr = context.getContentResolver();
+            int active = ((Integer) global.getMethod("getInt", resolver, String.class, int.class)
+                    .invoke(null, cr, COORD_SLEEP_ACTIVE, 0)).intValue();
+            String owner = (String) global.getMethod("getString", resolver, String.class)
+                    .invoke(null, cr, COORD_OWNER);
+            return active == 1 && "vsleep".equals(owner);
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + ": coordination read failed " + t);
+            return false;
+        }
+    }
+
+    private static void applyPowerMode(Context context, int mode, ClassLoader cl) throws Exception {
+        Class<?> dsu = XposedHelpers.findClass("com.picovr.settings.custom.DeviceSwitchUtilsKt", cl);
+        dsu.getMethod("e", Context.class, int.class).invoke(null, context, mode);
+        String buffer = mode == 2 ? "2448" : "1504";
+        Class<?> properties = Class.forName("android.os.SystemProperties");
+        Method set = properties.getMethod("set", String.class, String.class);
+        Method get = properties.getMethod("get", String.class);
+        set.invoke(null, "persist.pvr.config.eyebuffer_width", buffer);
+        set.invoke(null, "persist.pvr.config.eyebuffer_height", buffer);
+        String width = (String) get.invoke(null, "persist.pvr.config.eyebuffer_width");
+        String height = (String) get.invoke(null, "persist.pvr.config.eyebuffer_height");
+        if (!buffer.equals(width) || !buffer.equals(height)) {
+            throw new IllegalStateException("eyebuffer verification failed: " + width + "x" + height);
+        }
+        XposedBridge.log(TAG + ": powerlevel=" + mode + " applied, eyebuffer=" + buffer + "x" + buffer);
     }
 
     private String getLocalizedString(Context context) {
