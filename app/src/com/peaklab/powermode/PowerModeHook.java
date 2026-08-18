@@ -22,10 +22,9 @@ import java.util.Locale;
  * 策略(稳):
  *  1. hook PicolabFragment.T0(): 置一个标志, 表示正在弹"电源模式"菜单
  *  2. hook PopupMenuHelper.c(Activity, View, BaseAdapter, SimpleOnItemClickListener, int):
- *     若标志置位, 反射取 OSUIMenuAdapter 的私有 List<MenuItemData> f, 若尚无"高性能"项则追加一项
+ *     若标志置位, 反射取 OSUIMenuAdapter 的私有 List<MenuItemData> f, 若尚无"性能"/"画质"项则追加之
  *     (MenuItemData(TYPE_TITLE_CHECK).k(picolab_powerFunc3)), 并 notifyDataSetChanged()
- *  3. hook PicolabFragment.U0(int): i==2(高性能) 时直接运行时切换(DeviceSwitchUtilsKt.e(ctx,2)),
- *     避免走 P()[2] 越界; 并刷新按钮文字
+ *  3. hook PicolabFragment.U0(int): i==2(性能) 或 i==3(画质) 时接管, 避免走 P()[i] 越界; 并刷新按钮文字
  *
  * 系统底层已支持 powerlevel=2 (eyebuffer 2048 / 关FFR / 关stencil / 由 DeviceSwitchUtilsKt.e 写 props).
  */
@@ -94,24 +93,36 @@ public class PowerModeHook implements IXposedHookLoadPackage {
                             if (f == null) return;
                             f.setAccessible(true);
                             List<Object> data = (List<Object>) f.get(adapter);
-                            // 已是3项则跳过
-                            if (data.size() >= 3) { sPowerMenuOpen = false; return; }
                             // 构造 MenuItemData(TYPE_TITLE_CHECK).k(powerFunc3)
+                            // 已是4项则跳过
+                            if (data.size() >= 4) { sPowerMenuOpen = false; return; }
+
                             Class<?> typeEnum = XposedHelpers.findClass(
                                 "com.bytedance.osui.popupmenu.MenuItemType", cl);
                             Object titleCheck = Enum.valueOf((Class<? extends Enum>) typeEnum, "TYPE_TITLE_CHECK");
                             Class<?> md = XposedHelpers.findClass(
                                 "com.bytedance.osui.popupmenu.MenuItemData", cl);
-                            Object item = md.getConstructor(typeEnum).newInstance(titleCheck);
-                            // item.k(R.string.picolab_powerFunc3) -> 显示"效果优先", 改用 l(CharSequence) 直接设文案
-                            // k.invoke(item, resPowerFunc3);
                             Method l = md.getMethod("l", CharSequence.class);
-                            l.invoke(item, getLocalizedString((Context) p.args[0]));
-                            data.add(item);
+                            Context context = (Context) p.args[0];
+
+                            // 追加"性能" (Performance)
+                            if (data.size() == 2) {
+                                Object item = md.getConstructor(typeEnum).newInstance(titleCheck);
+                                l.invoke(item, getPerfString(context));
+                                data.add(item);
+                            }
+                            
+                            // 追加"画质" (Quality)
+                            if (data.size() == 3) {
+                                Object item = md.getConstructor(typeEnum).newInstance(titleCheck);
+                                l.invoke(item, getQualString(context));
+                                data.add(item);
+                            }
+
                             // 刷新
                             Method n = adapter.getClass().getMethod("notifyDataSetChanged");
                             n.invoke(adapter);
-                            XposedBridge.log(TAG + ": added High Performance item to power menu");
+                            XposedBridge.log(TAG + ": added Performance & Quality items to power menu");
                         } catch (Throwable t) {
                             XposedBridge.log(TAG + ": inject menu err " + t);
                         } finally {
@@ -128,7 +139,7 @@ public class PowerModeHook implements IXposedHookLoadPackage {
             XposedHelpers.findAndHookMethod(frag, "U0", int.class, new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam p) {
                     int i = (int) p.args[0];
-                    if (i == 0 || i == 1 || i == 2) { // 接管三个档位: 双向强制 eyebuffer
+                    if (i == 0 || i == 1 || i == 2 || i == 3) { // 接管所有档位 (续航/标准/性能/画质)
                         try {
                             Object activity = XposedHelpers.callMethod(p.thisObject, "getActivity");
                             Context context = activity instanceof Context ? (Context) activity : null;
@@ -161,14 +172,16 @@ public class PowerModeHook implements IXposedHookLoadPackage {
             XposedBridge.log(TAG + ": U0 hook err " + t);
         }
 
-        // ---------- 4) hook Q(int): 当前方案/按钮文字 (i==2 时不用系统资源"效果优先", 改显"性能") ----------
+        // ---------- 4) hook Q(int): 当前方案/按钮文字 ----------
         try {
             XposedHelpers.findAndHookMethod(frag, "Q", int.class, new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam p) {
                     int i = (int) p.args[0];
+                    Context ctx = (Context) XposedHelpers.callMethod(p.thisObject, "getActivity");
                     if (i == 2) {
-                        Context ctx = (Context) XposedHelpers.callMethod(p.thisObject, "getActivity");
-                        p.setResult(getLocalizedString(ctx));
+                        p.setResult(getPerfString(ctx));
+                    } else if (i == 3) {
+                        p.setResult(getQualString(ctx));
                     }
                 }
             });
@@ -212,7 +225,7 @@ public class PowerModeHook implements IXposedHookLoadPackage {
     private static void applyPowerMode(Context context, int mode, ClassLoader cl) throws Exception {
         Class<?> dsu = XposedHelpers.findClass("com.picovr.settings.custom.DeviceSwitchUtilsKt", cl);
         dsu.getMethod("e", Context.class, int.class).invoke(null, context, mode);
-        String buffer = mode == 2 ? "2448" : "1504";
+        String buffer = (mode == 3) ? "2448" : "1504"; // 画质 (3) 使用 2448, 性能 (2) 及其他档位使用 1504
         Class<?> properties = Class.forName("android.os.SystemProperties");
         Method set = properties.getMethod("set", String.class, String.class);
         Method get = properties.getMethod("get", String.class);
@@ -226,7 +239,7 @@ public class PowerModeHook implements IXposedHookLoadPackage {
         XposedBridge.log(TAG + ": powerlevel=" + mode + " applied, eyebuffer=" + buffer + "x" + buffer);
     }
 
-    private String getLocalizedString(Context context) {
+    private String getPerfString(Context context) {
         if (context == null) return "性能";
         try {
             Object res = XposedHelpers.callMethod(context, "getResources");
@@ -266,6 +279,49 @@ public class PowerModeHook implements IXposedHookLoadPackage {
             }
         } catch (Throwable t) {
             return "性能";
+        }
+    }
+
+    private String getQualString(Context context) {
+        if (context == null) return "画质";
+        try {
+            Object res = XposedHelpers.callMethod(context, "getResources");
+            Object config = XposedHelpers.callMethod(res, "getConfiguration");
+            Locale locale = (Locale) XposedHelpers.getObjectField(config, "locale");
+            String lang = locale.getLanguage();
+            String country = locale.getCountry();
+
+            switch (lang) {
+                case "cs": return "Kvalita";
+                case "da": return "Kvalitet";
+                case "nl": return "Kwaliteit";
+                case "fi": return "Laatu";
+                case "fr": return "Qualité";
+                case "de": return "Qualität";
+                case "el": return "Ποιότητα";
+                case "it": return "Qualità";
+                case "ja": return "画質";
+                case "ko": return "화질";
+                case "ms": return "Kualiti";
+                case "nb": case "no": return "Kvalitet";
+                case "pl": return "Jakość";
+                case "pt": return "Qualidade";
+                case "ro": return "Calitate";
+                case "ru": return "Качество";
+                case "es": return "Calidad";
+                case "sv": return "Kvalitet";
+                case "th": return "คุณภาพ";
+                case "tr": return "Kalite";
+                case "zh":
+                    if ("TW".equals(country) || "HK".equals(country) || "MO".equals(country)) {
+                        return "畫質";
+                    }
+                    return "画质";
+                case "en":
+                default: return "Quality";
+            }
+        } catch (Throwable t) {
+            return "画质";
         }
     }
 }
