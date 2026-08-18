@@ -1,22 +1,22 @@
 # PICO 4 高性能电源模式解锁
 
-一个 **LSPosed 模块**，用于在 **PICO 4（A8110）** 的「设置 → 实验室 → 电源管理方案」中解锁隐藏的 **高性能**（High Performance）档位。
+一个 **LSPosed 模块**，用于在 **PICO 4（A8110）** 的「设置 → 实验室 → 电源管理方案」中解锁隐藏的 **性能**（Performance）与 **画质**（Quality）档位。
 
 > English: [README.en-US.md](README.en-US.md) · Русский: [README.ru-RU.md](README.ru-RU.md)
 
 ## 功能
 
-- 在「设置 → 实验室 → 电源管理方案」下拉框里新增第三个 **高性能** 档位（原厂只显示「续航」「标准」两个）。
-- 选中「高性能」即调用系统官方切换逻辑（`DeviceSwitchUtilsKt.e()`，对应 `powerlevel=2`）：
-  - **eyebuffer 分辨率强制到 2448×2448**（满画质，更清晰）
+- 在「设置 → 实验室 → 电源管理方案」下拉框里新增 **性能** 与 **画质** 档位（原厂只显示「续航」「标准」）。
+- 选中性能 (powerlevel=2) 或画质 (powerlevel=3) 即调用系统官方切换逻辑：
+  - **画质 (3) 模式下 eyebuffer 分辨率强制到 2448×2448**（满画质，更清晰）
+  - **性能 (2) 模式下使用出厂 1504×1504 分辨率**
   - 关闭 **FFR**（固定注视点渲染，消除边缘模糊）
   - 关闭 **stencil mesh**
   - `target_fps=-1`（不限制帧率）
-  - 拉起 **CPU/GPU 高性能调度**（`CpuFreqServer onPowerLevelChange 2`）
-- **双向强制 eyebuffer**（接管标准/续航档）：
-  - 性能模式(2) → **2448×2448**
-  - 标准/续航(0/1) → **1504×1504**（回到出厂默认，省电）
-- 下拉框选项与按钮文字统一显示为「**性能模式**」而非原厂文案「效果优先」。
+- **双向强制 eyebuffer**：
+  - 画质 (3) → **2448×2448**
+  - 性能 (2) / 标准 / 续航 (0/1) → **1504×1504**
+- 下拉框选项与按钮文字统一显示为「**性能**」或「**画质**」。
 
 ## 环境要求
 
@@ -35,7 +35,7 @@
    su -c '/data/adb/modules/zygisk_vector/cli scope add com.peaklab.powermode com.picovr.settings'
    ```
 
-4. 重启设置 app（`pkill -f com.picovr.settings`），打开「设置 → 实验室 → 电源管理方案」，即可看到并选择「性能模式」。
+4. 重启设置 app（`pkill -f com.picovr.settings`），打开「设置 → 实验室 → 电源管理方案」，即可看到并选择对应档位。
 
 ## 构建
 
@@ -56,13 +56,13 @@ build.bat
 Hook `com.picovr.settings` 的 `com.picovr.fragments.PicolabFragment`：
 
 1. **`T0(View)`** —— 置标志，表示正在弹出电源模式菜单。
-2. **`PopupMenuHelper.c(...)`** —— 反射往电源菜单的 `List<MenuItemData>` 追加第三个「性能模式」项（文本直接用 `MenuItemData.l(CharSequence)` 设置为「性能模式」）。
-3. **`U0(int)`** —— 接管三个档位（0/1/2）：调 `DeviceSwitchUtilsKt.e(context, i)`（系统官方切换，写 `powerlevel=i` 及各类 persist props），**并额外强制写 eyebuffer**：性能(2)→2448×2448，标准/续航(0/1)→1504×1504。
-4. **`Q(int)`** —— 让按钮/当前方案文字在性能模式下显示「性能模式」。
+2. **`PopupMenuHelper.c(...)`** —— 反射往电源菜单的 `List<MenuItemData>` 追加「性能」与「画质」项。
+3. **`U0(int)`** —— 接管所有档位 (0/1/2/3)：调 `DeviceSwitchUtilsKt.e(context, i)`（系统官方切换），**并额外强制写 eyebuffer**：画质 (3)→2448×2448，性能/标准/续航 (0/1/2)→1504×1504。
+4. **`Q(int)`** —— 让按钮/当前方案文字显示对应名称。
 
 ### 关键细节 / 坑
 
-- 字符串资源 `picolab_powerFunc3` 运行时被 proguard 混淆，**不能用反射读 R.string 字段**（会 `NoSuchFieldError`），改为直接 `MenuItemData.l("性能模式")` 设文本，或硬编码资源 ID。
+- 字符串资源 `picolab_powerFunc3` 运行时被 proguard 混淆，**不能用反射读 R.string 字段**（会 `NoSuchFieldError`），改为直接 `MenuItemData.l("性能")` 设文本，或硬编码资源 ID。
 - `xposed_init` 文件**不能带 UTF-8 BOM**（否则类名首字节变乱码 → `ClassNotFoundException`）。
 - `T0` 是带 `View` 参数的私有方法（不是无参）。
 - 运行时真正决定 eyebuffer 的是 **`persist.pvr.config.eyebuffer_width/height`** 系统属性（不是 `PXRuleValueFile.txt`），所以本模块直接在切换时 setSystemProperties 强制写入 2448/1504。
