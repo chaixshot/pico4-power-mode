@@ -161,7 +161,7 @@ public class PowerModeHook implements IXposedHookLoadPackage {
             XposedBridge.log(TAG + ": U0 hook err " + t);
         }
 
-        // ---------- 4) hook Q(int): 当前方案/按钮文字 (i==2 时不用系统资源"效果优先", 改显"性能模式") ----------
+        // ---------- 4) hook Q(int): 当前方案/按钮文字 (i==2 时不用系统资源"效果优先", 改显"性能") ----------
         try {
             XposedHelpers.findAndHookMethod(frag, "Q", int.class, new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam p) {
@@ -227,7 +227,7 @@ public class PowerModeHook implements IXposedHookLoadPackage {
     }
 
     private String getLocalizedString(Context context) {
-        if (context == null) return "性能模式";
+        if (context == null) return "性能";
         try {
             Object res = XposedHelpers.callMethod(context, "getResources");
             Object config = XposedHelpers.callMethod(res, "getConfiguration");
@@ -236,36 +236,36 @@ public class PowerModeHook implements IXposedHookLoadPackage {
             String country = locale.getCountry();
 
             switch (lang) {
-                case "cs": return "Výkonný režim";
-                case "da": return "Ydelsestilstand";
-                case "nl": return "Prestatiemodus";
-                case "fi": return "Suorituskykytila";
-                case "fr": return "Mode performance";
-                case "de": return "Leistungsmodus";
-                case "el": return "Λειτουργία απόδοσης";
-                case "it": return "Modalità prestazioni";
-                case "ja": return "パフォーマンスモード";
-                case "ko": return "성능 모드";
-                case "ms": return "Mod Prestasi";
-                case "nb": case "no": return "Ytelsesmodus";
-                case "pl": return "Tryb wydajności";
-                case "pt": return "Modo de desempenho";
-                case "ro": return "Mod de performanță";
-                case "ru": return "Режим производительности";
-                case "es": return "Modo de rendimiento";
-                case "sv": return "Prestandaläge";
-                case "th": return "โหมดประสิทธิภาพ";
-                case "tr": return "Performans Modu";
+                case "cs": return "Výkon";
+                case "da": return "Ydelse";
+                case "nl": return "Prestatie";
+                case "fi": return "Suorituskyky";
+                case "fr": return "Performance";
+                case "de": return "Leistung";
+                case "el": return "Απόδοση";
+                case "it": return "Prestazioni";
+                case "ja": return "パフォーマンス";
+                case "ko": return "성능";
+                case "ms": return "Prestasi";
+                case "nb": case "no": return "Ytelse";
+                case "pl": return "Wydajność";
+                case "pt": return "Desempenho";
+                case "ro": return "Performanță";
+                case "ru": return "Производительность";
+                case "es": return "Rendimiento";
+                case "sv": return "Prestanda";
+                case "th": return "ประสิทธิภาพ";
+                case "tr": return "Performans";
                 case "zh":
                     if ("TW".equals(country) || "HK".equals(country) || "MO".equals(country)) {
-                        return "效能模式";
+                        return "效能";
                     }
-                    return "性能模式";
+                    return "性能";
                 case "en":
-                default: return "Performance Mode";
+                default: return "Performance";
             }
         } catch (Throwable t) {
-            return "性能模式";
+            return "性能";
         }
     }
 }
