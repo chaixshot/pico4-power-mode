@@ -10,12 +10,14 @@
 - 选中性能 (powerlevel=2) 或画质 (powerlevel=3) 即调用系统官方切换逻辑：
   - **画质 (3) 模式下 eyebuffer 分辨率强制到 2448×2448**（满画质，更清晰）
   - **性能 (2) 模式下使用出厂 1504×1504 分辨率**
-  - 关闭 **FFR**（固定注视点渲染，消除边缘模糊）
   - 关闭 **stencil mesh**
   - `target_fps=-1`（不限制帧率）
 - **双向强制 eyebuffer**：
   - 画质 (3) → **2448×2448**
   - 性能 (2) / 标准 / 续航 (0/1) → **1504×1504**
+- **双向强制 FFR**（`persist.pvr.config.ffr`）：
+  - 性能 (2) → **关闭**（`0`，消除边缘模糊，全部 GPU 余量换帧率）
+  - 画质 (3) / 标准 / 续航 (0/1) → **开启**（`1`，系统默认；画质档 2448 分辨率需要 FFR 维持帧率）
 - 下拉框选项与按钮文字统一显示为「**性能**」或「**画质**」。
 
 ## 环境要求
@@ -57,7 +59,7 @@ Hook `com.picovr.settings` 的 `com.picovr.fragments.PicolabFragment`：
 
 1. **`T0(View)`** —— 置标志，表示正在弹出电源模式菜单。
 2. **`PopupMenuHelper.c(...)`** —— 反射往电源菜单的 `List<MenuItemData>` 追加「性能」与「画质」项。
-3. **`U0(int)`** —— 接管所有档位 (0/1/2/3)：调 `DeviceSwitchUtilsKt.e(context, i)`（系统官方切换），**并额外强制写 eyebuffer**：画质 (3)→2448×2448，性能/标准/续航 (0/1/2)→1504×1504。
+3. **`U0(int)`** —— 接管所有档位 (0/1/2/3)：调 `DeviceSwitchUtilsKt.e(context, i)`（系统官方切换），**并额外强制写 eyebuffer 与 FFR**：画质 (3)→2448×2448，性能/标准/续航 (0/1/2)→1504×1504；FFR 性能 (2)→关，其余→开。
 4. **`Q(int)`** —— 让按钮/当前方案文字显示对应名称。
 
 ### 关键细节 / 坑
@@ -66,6 +68,17 @@ Hook `com.picovr.settings` 的 `com.picovr.fragments.PicolabFragment`：
 - `xposed_init` 文件**不能带 UTF-8 BOM**（否则类名首字节变乱码 → `ClassNotFoundException`）。
 - `T0` 是带 `View` 参数的私有方法（不是无参）。
 - 运行时真正决定 eyebuffer 的是 **`persist.pvr.config.eyebuffer_width/height`** 系统属性（不是 `PXRuleValueFile.txt`），所以本模块直接在切换时 setSystemProperties 强制写入 2448/1504。
+- 运行时 FFR 使用 **`persist.pvr.config.ffr`**：性能档写入并验证 `0`，其他档位写入并验证 `1`。V-Sleep 持有协调事务时不会写入这些显示属性。
+
+## 设备端验证
+
+切换档位后可用以下命令检查实际运行时属性：
+
+```sh
+adb shell su -c 'getprop persist.pvr.config.eyebuffer_width; getprop persist.pvr.config.eyebuffer_height; getprop persist.pvr.config.ffr'
+```
+
+预期值：Performance（2）为 `1504`、`1504`、`0`；Quality（3）为 `2448`、`2448`、`1`；Standard/Battery Saver（0/1）为 `1504`、`1504`、`1`。启用 V-Sleep 时，Power Mode 只记录请求，不会覆盖 V-Sleep 保存的显示状态。
 
 ## 文件结构
 

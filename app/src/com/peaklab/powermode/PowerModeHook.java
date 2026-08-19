@@ -25,6 +25,7 @@ import java.util.Locale;
  *     若标志置位, 反射取 OSUIMenuAdapter 的私有 List<MenuItemData> f, 若尚无"性能"/"画质"项则追加之
  *     (MenuItemData(TYPE_TITLE_CHECK).k(picolab_powerFunc3)), 并 notifyDataSetChanged()
  *  3. hook PicolabFragment.U0(int): i==2(性能) 或 i==3(画质) 时接管, 避免走 P()[i] 越界; 并刷新按钮文字
+ *     eyebuffer 双向强制: 画质(3)->2448, 其余->1504; FFR 双向强制: 性能(2)->关, 其余->开
  *
  * 系统底层已支持 powerlevel=2 (eyebuffer 2048 / 关FFR / 关stencil / 由 DeviceSwitchUtilsKt.e 写 props).
  */
@@ -134,7 +135,7 @@ public class PowerModeHook implements IXposedHookLoadPackage {
             XposedBridge.log(TAG + ": PopupMenuHelper hook err " + t);
         }
 
-        // ---------- 3) hook U0(int i): 高性能(i==2) 运行时切换 ----------
+        // ---------- 3) hook U0(int i): 接管 0/1/2/3 档位切换 ----------
         try {
             XposedHelpers.findAndHookMethod(frag, "U0", int.class, new XC_MethodHook() {
                 @Override protected void beforeHookedMethod(MethodHookParam p) {
@@ -160,7 +161,7 @@ public class PowerModeHook implements IXposedHookLoadPackage {
                             Method v = frag.getDeclaredMethod("V", int.class);
                             v.setAccessible(true);
                             v.invoke(p.thisObject, i);
-                            XposedBridge.log(TAG + ": powerlevel=" + i + " applied (eyebuffer forced)");
+                            XposedBridge.log(TAG + ": powerlevel=" + i + " applied (eyebuffer/FFR forced)");
                         } catch (Throwable t) {
                             XposedBridge.log(TAG + ": U0(" + i + ") err " + t);
                         }
@@ -226,17 +227,20 @@ public class PowerModeHook implements IXposedHookLoadPackage {
         Class<?> dsu = XposedHelpers.findClass("com.picovr.settings.custom.DeviceSwitchUtilsKt", cl);
         dsu.getMethod("e", Context.class, int.class).invoke(null, context, mode);
         String buffer = (mode == 3) ? "2448" : "1504"; // 画质 (3) 使用 2448, 性能 (2) 及其他档位使用 1504
+        String ffr = (mode == 2) ? "0" : "1"; // 性能 (2) 关闭 FFR, 其余档位恢复系统默认开启
         Class<?> properties = Class.forName("android.os.SystemProperties");
         Method set = properties.getMethod("set", String.class, String.class);
         Method get = properties.getMethod("get", String.class);
         set.invoke(null, "persist.pvr.config.eyebuffer_width", buffer);
         set.invoke(null, "persist.pvr.config.eyebuffer_height", buffer);
+        set.invoke(null, "persist.pvr.config.ffr", ffr);
         String width = (String) get.invoke(null, "persist.pvr.config.eyebuffer_width");
         String height = (String) get.invoke(null, "persist.pvr.config.eyebuffer_height");
-        if (!buffer.equals(width) || !buffer.equals(height)) {
-            throw new IllegalStateException("eyebuffer verification failed: " + width + "x" + height);
+        String ffrNow = (String) get.invoke(null, "persist.pvr.config.ffr");
+        if (!buffer.equals(width) || !buffer.equals(height) || !ffr.equals(ffrNow)) {
+            throw new IllegalStateException("verification failed: eyebuffer=" + width + "x" + height + " ffr=" + ffrNow);
         }
-        XposedBridge.log(TAG + ": powerlevel=" + mode + " applied, eyebuffer=" + buffer + "x" + buffer);
+        XposedBridge.log(TAG + ": powerlevel=" + mode + " applied, eyebuffer=" + buffer + "x" + buffer + ", ffr=" + ffr);
     }
 
     private String getPerfString(Context context) {

@@ -10,12 +10,14 @@ An **LSPosed module** that unlocks the hidden **Performance** and **Quality** op
 - Selecting Performance (powerlevel=2) or Quality (powerlevel=3) invokes the system's official switch logic:
   - **Quality (3) forced to 2448×2448 eyebuffer** (full quality, sharper)
   - **Performance (2) uses stock 1504×1504 eyebuffer**
-  - **FFR off** (fixed foveated rendering removed — no edge blur)
   - **stencil mesh off**
   - `target_fps=-1` (uncapped frame rate)
 - **Bidirectional eyebuffer enforcement**:
   - Quality (3) → **2448×2448**
   - Performance (2) / Standard / Battery Saver (0/1) → **1504×1504**
+- **Bidirectional FFR enforcement** (`persist.pvr.config.ffr`):
+  - Performance (2) → **off** (`0` — no edge blur, all GPU headroom goes to frame rate)
+  - Quality (3) / Standard / Battery Saver (0/1) → **on** (`1`, stock default; Quality's 2448 resolution needs FFR to hold frame rate)
 - Dropdown item and button text show Performance or Quality.
 
 ## Requirements
@@ -57,7 +59,7 @@ Hooks `com.picovr.fragments.PicolabFragment` in `com.picovr.settings`:
 
 1. **`T0(View)`** — sets a flag indicating the power menu is opening.
 2. **`PopupMenuHelper.c(...)`** — reflects into the power menu's `List<MenuItemData>` and appends "性能" and "画质" items.
-3. **`U0(int)`** — intercepts all levels (0/1/2/3): calls `DeviceSwitchUtilsKt.e(context, i)` (system switch), **and extra-forces eyebuffer**: quality(3)→2448×2448, performance/standard/eco(0/1/2)→1504×1504.
+3. **`U0(int)`** — intercepts all levels (0/1/2/3): calls `DeviceSwitchUtilsKt.e(context, i)` (system switch), **then explicitly enforces eyebuffer and FFR**: Quality (3)→2448×2448, all other levels→1504×1504; Performance (2)→FFR off, all other levels→FFR on.
 4. **`Q(int)`** — makes the button text show the correct mode name.
 
 ### Gotchas
