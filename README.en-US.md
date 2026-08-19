@@ -15,9 +15,9 @@ An **LSPosed module** that unlocks the hidden **Performance** and **Quality** op
 - **Bidirectional eyebuffer enforcement**:
   - Quality (3) → **2448×2448**
   - Performance (2) / Standard / Battery Saver (0/1) → **1504×1504**
-- **Bidirectional FFR enforcement** (`persist.pvr.config.ffr`):
+- **FFR is only explicitly disabled in Performance** (`persist.pvr.config.ffr`):
   - Performance (2) → **off** (`0` — no edge blur, all GPU headroom goes to frame rate)
-  - Quality (3) / Standard / Battery Saver (0/1) → **on** (`1`, stock default; Quality's 2448 resolution needs FFR to hold frame rate)
+  - Quality (3) / Standard / Battery Saver (0/1) → FFR is left untouched so the system keeps its current value
 - Dropdown item and button text show Performance or Quality.
 
 ## Requirements

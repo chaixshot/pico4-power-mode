@@ -227,20 +227,24 @@ public class PowerModeHook implements IXposedHookLoadPackage {
         Class<?> dsu = XposedHelpers.findClass("com.picovr.settings.custom.DeviceSwitchUtilsKt", cl);
         dsu.getMethod("e", Context.class, int.class).invoke(null, context, mode);
         String buffer = (mode == 3) ? "2448" : "1504"; // 画质 (3) 使用 2448, 性能 (2) 及其他档位使用 1504
-        String ffr = (mode == 2) ? "0" : "1"; // 性能 (2) 关闭 FFR, 其余档位恢复系统默认开启
         Class<?> properties = Class.forName("android.os.SystemProperties");
         Method set = properties.getMethod("set", String.class, String.class);
         Method get = properties.getMethod("get", String.class);
         set.invoke(null, "persist.pvr.config.eyebuffer_width", buffer);
         set.invoke(null, "persist.pvr.config.eyebuffer_height", buffer);
-        set.invoke(null, "persist.pvr.config.ffr", ffr);
         String width = (String) get.invoke(null, "persist.pvr.config.eyebuffer_width");
         String height = (String) get.invoke(null, "persist.pvr.config.eyebuffer_height");
-        String ffrNow = (String) get.invoke(null, "persist.pvr.config.ffr");
-        if (!buffer.equals(width) || !buffer.equals(height) || !ffr.equals(ffrNow)) {
-            throw new IllegalStateException("verification failed: eyebuffer=" + width + "x" + height + " ffr=" + ffrNow);
+        if (!buffer.equals(width) || !buffer.equals(height)) {
+            throw new IllegalStateException("eyebuffer verification failed: " + width + "x" + height);
         }
-        XposedBridge.log(TAG + ": powerlevel=" + mode + " applied, eyebuffer=" + buffer + "x" + buffer + ", ffr=" + ffr);
+        if (mode == 2) {
+            set.invoke(null, "persist.pvr.config.ffr", "0");
+            String ffrNow = (String) get.invoke(null, "persist.pvr.config.ffr");
+            if (!"0".equals(ffrNow)) {
+                throw new IllegalStateException("FFR verification failed: " + ffrNow);
+            }
+        }
+        XposedBridge.log(TAG + ": powerlevel=" + mode + " applied, eyebuffer=" + buffer + "x" + buffer + (mode == 2 ? ", ffr=0" : ""));
     }
 
     private String getPerfString(Context context) {
